@@ -2,6 +2,7 @@
 import argparse
 from baselines.common.cmd_util import roboschool_arg_parser
 from baselines import bench, logger
+import roboschool
 
 def train(env_id, num_timesteps, seed):
     from baselines.common import set_global_seeds
