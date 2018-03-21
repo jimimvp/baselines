@@ -86,6 +86,10 @@ class Model(object):
 
 class Runner(object):
 
+    #  Keep accumulated rewards of last 100 episodes
+    mvavg_rewards = deque(maxlen=100)
+
+
     def __init__(self, *, env, model, nsteps, gamma, lam):
         self.env = env
         self.model = model
@@ -97,7 +101,8 @@ class Runner(object):
         self.nsteps = nsteps
         self.states = model.initial_state
         self.dones = [False for _ in range(nenv)]
-
+        self.acc_reward = 0
+        self.global_step = 0
     def run(self):
         mb_obs, mb_rewards, mb_actions, mb_values, mb_dones, mb_neglogpacs = [],[],[],[],[],[]
         mb_states = self.states
@@ -110,10 +115,17 @@ class Runner(object):
             mb_neglogpacs.append(neglogpacs)
             mb_dones.append(self.dones)
             self.obs[:], rewards, self.dones, infos = self.env.step(actions)
+            self.acc_reward+=rewards
+            self.global_step += 1
             for info in infos:
                 maybeepinfo = info.get('episode')
                 if maybeepinfo: epinfos.append(maybeepinfo)
             mb_rewards.append(rewards)
+
+            if self.dones or self.global_step % 500 == 0:
+                self.mvavg_rewards.append(self.acc_reward)
+                self.acc_reward = 0
+
         #batch of steps to batch of rollouts
         mb_obs = np.asarray(mb_obs, dtype=self.obs.dtype)
         mb_rewards = np.asarray(mb_rewards, dtype=np.float32)
@@ -230,6 +242,8 @@ def learn(*, policy, env, nsteps, total_timesteps, ent_coef, lr,
             logger.logkv('eprewmean', safemean([epinfo['r'] for epinfo in epinfobuf]))
             logger.logkv('eplenmean', safemean([epinfo['l'] for epinfo in epinfobuf]))
             logger.logkv('time_elapsed', tnow - tfirststart)
+            logger.logkv('mvavg_reward', np.mean(Runner.mvavg_rewards))
+
             for (lossval, lossname) in zip(lossvals, model.loss_names):
                 logger.logkv(lossname, lossval)
             logger.dumpkvs()
